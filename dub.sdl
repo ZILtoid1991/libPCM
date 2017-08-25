@@ -1,0 +1,8 @@
+name "libpcm"
+description "PCM and ADPCM utility."
+authors "Laszlo Szeremi"
+homepage "http://github.com/ZILtoid1991/libpcm"
+license "BSL-1.0"
+
+target "library"
+targetPath "/lib/"
