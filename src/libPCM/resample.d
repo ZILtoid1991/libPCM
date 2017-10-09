@@ -1,6 +1,7 @@
 /*
  * libPCM by László Szerémi.
- * Copyright under Boost License.
+ * Licensed under Boost License.
+ * Copyright 2017
  */
 
 module libPCM.resample;

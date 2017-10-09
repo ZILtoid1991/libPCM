@@ -26,7 +26,8 @@ public enum CodecType : ushort{
 	SIGNED32BIT		=	10,
 	DIALOGIC_ADPCM	=	32,
 	IMA_ADPCM		=	33,
-	COMPACT_ADPCM	=	34,
+	XA_ADPCM		=	35,
+	Yamaha_ADPCMA	=	36,
 	MU_LAW			=	64,
 	A_LAW_87_6		=	65,
 	FLOAT			=	96,
@@ -167,6 +168,28 @@ public enum WAVAudioFormat : ushort{
 	DVM		=	0x2000, /* FAST Multimedia AG */
 }
 
+public CodecType fromWAVAudioFormat(ushort input, ushort bitDepth){
+	switch(input){
+		case WAVAudioFormat.PCM:
+			switch (bitDepth){
+				case 8:
+					return CodecType.UNSIGNED8BIT;
+				case 16:
+					return CodecType.SIGNED16BIT;
+				default:
+					return CodecType.NULL;
+			}
+		case WAVAudioFormat.OKI_ADPCM:
+			return CodecType.DIALOGIC_ADPCM;
+		case WAVAudioFormat.IMA_ADPCM:
+			return CodecType.IMA_ADPCM;
+		case WAVAudioFormat.IEEE_FLOAT:
+			return CodecType.FLOAT;
+		default:
+			return CodecType.NULL;
+	}
+}
+
 public class AudioFileException : Exception{
 	@nogc @safe pure nothrow this(string msg, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
@@ -179,21 +202,22 @@ public class AudioFileException : Exception{
     }
 }
 
-public @nogc:
+
 	/**
 	 * Returns the word lenght for the given codec type
 	 */
-	int getWordLength(CodecType codec){
-		switch(codec){
-			case CodecType.A_LAW_87_6, CodecType.MU_LAW, CodecType.SIGNED8BIT, CodecType.UNSIGNED8BIT: return 8;
-			case CodecType.DIALOGIC_ADPCM, CodecType.IMA_ADPCM: return 4;
-			case CodecType.SIGNED16BIT, CodecType.UNSIGNED16BIT: return 16;
-			case CodecType.SIGNED24BIT, CodecType.UNSIGNED24BIT: return 24;
-			case CodecType.SIGNED32BIT, CodecType.UNSIGNED32BIT, CodecType.FLOAT: return 32;
-			case CodecType.COMPACT_ADPCM: return 2;
-			default: return 0;
-		}
+public @nogc int getWordLength(CodecType codec){
+	switch(codec){
+		//case CodecType.A_LAW_87_6, CodecType.MU_LAW, CodecType.SIGNED8BIT, CodecType.UNSIGNED8BIT: return 8;
+		//case CodecType.DIALOGIC_ADPCM, CodecType.IMA_ADPCM: return 4;
+		case CodecType.SIGNED16BIT, CodecType.UNSIGNED16BIT: return 16;
+		case CodecType.SIGNED24BIT, CodecType.UNSIGNED24BIT: return 24;
+		case CodecType.SIGNED32BIT, CodecType.UNSIGNED32BIT, CodecType.FLOAT: return 32;
+		//case CodecType.COMPACT_ADPCM: return 2;
+		case CodecType.XA_ADPCM: return 128 * 8;
+		default: return 8;
 	}
+}
 	/**
 	 * Completely deallocates the memory for the given PCM data
 	 */
@@ -211,3 +235,97 @@ public @nogc:
 		}
 		free(file);
 	}*/
+/**
+ * Separates audio streams from a joint stream.
+ */
+public @nogc void separateAudioChannels(void* input, void*[8] output, uint lenght, int channels, int wordLength = 16){
+	switch(wordLength){
+		case 16:
+			ushort* input0 = cast(ushort*)input;
+			ushort*[8] output0 = cast(ushort*[8])output;
+			for(uint i ; i < lenght ; i++){
+				for(int j ; j < channels ; j++){
+					output0[j][i] = input0[(i * channels) + j];
+				}
+			}
+			break;
+		case 8:
+			ubyte* input0 = cast(ubyte*)input;
+			ubyte*[8] output0 = cast(ubyte*[8])output;
+			for(uint i ; i < lenght ; i++){
+				for(int j ; j < channels ; j++){
+					output0[j][i] = input0[(i * channels) + j];
+				}
+			}
+			break;
+		case 32:
+			uint* input0 = cast(uint*)input;
+			uint*[8] output0 = cast(uint*[8])output;
+			for(uint i ; i < lenght ; i++){
+				for(int j ; j < channels ; j++){
+					output0[j][i] = input0[(i * channels) + j];
+				}
+			}
+			break;
+		default:
+			if(!(wordLength % 8)){
+				ubyte* input0 = cast(ubyte*)input;
+				ubyte*[8] output0 = cast(ubyte*[8])output;
+				for(uint i ; i < lenght ; i++){
+					for(int j ; j < channels ; j++){
+						for(int k ; k < wordLength / 8 ; k++){
+							output0[j][i+k] = input0[(i * channels) + j + k];
+						}
+					}
+				}
+			}
+			break;
+	}
+}
+/**
+ * Joints multiple audio channels into a single one.
+ */
+public @nogc void joinAudioChannels(void*[8] input, void* output, uint lenght, int channels, int wordLength = 16){
+	switch(wordLength){
+		case 16:
+			ushort* output0 = cast(ushort*)output; 
+			ushort*[8] input0 = cast(ushort*[8])input;
+			for(uint i ; i < lenght ; i++){
+				for(int j ; j < channels ; j++){
+					output0[(i * channels) + j] = input0[j][i];
+				}
+			}
+			break;
+		case 8:
+			ubyte* output0 = cast(ubyte*)output; 
+			ubyte*[8] input0 = cast(ubyte*[8])input;
+			for(uint i ; i < lenght ; i++){
+				for(int j ; j < channels ; j++){
+					output0[(i * channels) + j] = input0[j][i];
+				}
+			}
+			break;
+		case 32:
+			uint* output0 = cast(uint*)output;
+			uint*[8] input0 = cast(uint*[8])input;
+			for(uint i ; i < lenght ; i++){
+				for(int j ; j < channels ; j++){
+					output0[(i * channels) + j] = input0[j][i];
+				}
+			}
+			break;
+		default:
+			if(!(wordLength % 8)){
+				ubyte* output0 = cast(ubyte*)output; 
+				ubyte*[8] input0 = cast(ubyte*[8])input;
+				for(uint i ; i < lenght ; i++){
+					for(int j ; j < channels ; j++){
+						for(int k ; k < wordLength / 8 ; k++){
+							output0[(i * channels) + j + k] = input0[j][i+k];
+						}
+					}
+				}
+			}
+			break;
+	}
+}

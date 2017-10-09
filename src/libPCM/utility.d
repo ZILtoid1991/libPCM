@@ -66,3 +66,9 @@ module libPCM.utility;
 			;
 		}
 	}
+	int signExtend(int val, uint bits){
+		int workPad;
+		uint shift = int.sizeof - bits;
+		*cast(uint*)&workPad = cast(uint)(val<<shift);
+		return workPad;
+	}

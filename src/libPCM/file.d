@@ -8,6 +8,7 @@ module libPCM.file;
 import core.stdc.stdio;
 import core.stdc.stdlib;
 import std.stdio;
+import std.conv;
 version(Windows){
 	import core.sys.windows.windows;
 }else version(Posix){
@@ -22,7 +23,7 @@ public:
 	/**
 	 * Loads a *.pcm file into the memory.
 	 */
-	PCMFile loadPCMFile(immutable char* name, bool indivStreams = true){
+	PCMFile loadPCMFile(immutable char* name){
 		FILE* inputStream = fopen(name, "rb");
 		if(inputStream is null){
 			import std.conv;
@@ -45,73 +46,26 @@ public:
 			file.loadTagData(tagData);
 			free(tagData);
 		}
-		if(indivStreams){
-			int wordlength = getWordLength(file.header.codecType);
-			size_t sampleSize = (file.header.length * wordlength) / 8;
-			sampleSize += (file.header.length * wordlength) % 8 ? 1 : 0;
-			//allocate memory for the individual WaveData
-			for(int i ; i < file.header.numOfChannels ; i++){
-				
-				file.waveData ~= new WaveData(file.header.length, file.header.sampleRate, file.header.codecType, sampleSize);
-			}
-			buffer = malloc(sampleSize * file.header.numOfChannels);
-			fread(buffer, sampleSize, file.header.numOfChannels, inputStream);
-			size_t bufferOffset;
-			switch(wordlength){
-				case 16:
-					for(size_t i ; i < sampleSize; i++){
-						for(int j ; j < file.header.numOfChannels ; j++){
-							*cast(ushort*)((file.waveData[j].data.ptr) + i) = *(cast(ushort*)(buffer) + bufferOffset);
-							bufferOffset++;
-						}
-					}
-					break;
-				case 24, 12:
-					for(size_t i ; i < sampleSize; i++){
-						for(int j ; j < file.header.numOfChannels ; j++){
-							*cast(ubyte*)((file.waveData[j].data.ptr) + i) = *cast(ubyte*)(buffer + bufferOffset);
-							bufferOffset++;
-							*cast(ubyte*)((file.waveData[j].data.ptr) + i) = *cast(ubyte*)(buffer + bufferOffset);
-							bufferOffset++;
-							*cast(ubyte*)((file.waveData[j].data.ptr) + i) = *cast(ubyte*)(buffer + bufferOffset);
-							bufferOffset++;
-						}
-					}
-					break;
-				case 32:
-					for(size_t i ; i < sampleSize; i++){
-						for(int j ; j < file.header.numOfChannels ; j++){
-							*cast(uint*)((file.waveData[j].data.ptr) + i) = *(cast(uint*)(buffer) + bufferOffset);
-							bufferOffset++;
-						}
-					}
-					break;
-				default:
-					for(size_t i ; i < sampleSize; i++){
-						for(int j ; j < file.header.numOfChannels ; j++){
-							*cast(ubyte*)((file.waveData[j].data.ptr) + i) = *cast(ubyte*)(buffer + bufferOffset);
-							bufferOffset++;
-						}
-					}
-					break;
-			}
-			free(buffer);
+		size_t sampleSize, sampleLength;
+		version(x64){
+			sampleLength = (file.header.length + file.header.length_h<<32);
+			sampleSize = sampleLength * (getWordLength(file.header.codecType)/8);
 		}else{
-			int wordlength = getWordLength(file.header.codecType);
-			size_t sampleSize = (file.header.length * wordlength) / 8;
-			sampleSize += (file.header.length * wordlength) % 8 ? 1 : 0;
-			buffer = malloc(sampleSize * file.header.numOfChannels);
-			fread(buffer, sampleSize, file.header.numOfChannels, inputStream);
-			memCpy(file.startOfData.ptr, buffer, sampleSize * file.header.numOfChannels);
-			free(buffer);
+			sampleLength = file.header.length;
+			sampleSize = sampleLength * (getWordLength(file.header.codecType)/8);
 		}
+
+		file.data = new WaveData(sampleLength, file.header.sampleRate, file.header.codecType, sampleSize, file.header.numOfChannels);
+
+		fread(file.data.data.ptr, sampleSize, 1, inputStream);
+
 		fclose(inputStream);
 		return file;
 	}
 	/**
 	 * Loads a *.wav file into the memory.
 	 */
-	WavFile loadWavFile(immutable char* name, bool indivStreams = true){
+	WavFile loadWavFile(immutable char* name){
 		FILE* inputStream = fopen(name, "rb");
 		if(inputStream is null){
 			import std.conv;
@@ -122,54 +76,18 @@ public:
 			}
 			throw new AudioFileException("File access error! Error number: " ~ to!string(errorCode));
 		}
-		WavFile file;
-		WavHeader header;
+		WavFile file = new WavFile;
 		void* buffer;
-		fread(&header, header.sizeof, 1, inputStream);
-		file.header = header;
-		buffer = malloc(file.header.subchunk2Size);
-		fread(buffer, file.header.subchunk2Size, 1, inputStream);
-		if(!indivStreams){
-			memCpy(file.startOfData.ptr, buffer, file.header.subchunk2Size);
-			free(buffer);
-			return file;
-		}
-		file.waveData.length = file.header.numOfChannels;
-		if(file.header.numOfChannels == 1){
-			CodecType codecType;
-			if(file.header.bitsPerSample == 8 && file.header.audioFormat == 1){
-				codecType = CodecType.UNSIGNED8BIT;
-			}else if(file.header.bitsPerSample == 16 && file.header.audioFormat == 1){
-				codecType = CodecType.SIGNED16BIT;
-			}
-			file.waveData[0] = new WaveData(file.header.subchunk2Size * file.header.bitsPerSample / 8, file.header.sampleRate, codecType, file.header.subchunk2Size);
-			memCpy(buffer, file.waveData[0].data.ptr, file.header.subchunk2Size);
-		}else if(file.header.numOfChannels == 2){
-			CodecType codecType;
-			if(file.header.bitsPerSample == 8 && file.header.audioFormat == 1){
-				codecType = CodecType.UNSIGNED8BIT;
-			}else if(file.header.bitsPerSample == 16 && file.header.audioFormat == 1){
-				codecType = CodecType.SIGNED16BIT;
-			}
-			file.waveData[0] = new WaveData(file.header.subchunk2Size * file.header.bitsPerSample / 16, file.header.sampleRate, codecType, file.header.subchunk2Size);
-			file.waveData[1] = new WaveData(file.header.subchunk2Size * file.header.bitsPerSample / 16, file.header.sampleRate, codecType, file.header.subchunk2Size);
-			size_t bufferOffset;
-			if(file.header.bitsPerSample == 8 && file.header.audioFormat == 1){
-				for(size_t i ; i < file.waveData[0].length; i++){
-					for(int j ; j < file.header.numOfChannels ; j++){
-						*cast(ubyte*)(file.waveData[j].data.ptr + i) = *cast(ubyte*)(buffer + bufferOffset);
-						bufferOffset++;
-					}
-				}
-			}else if(file.header.bitsPerSample == 16 && file.header.audioFormat == 1){
-				for(size_t i ; i < file.waveData[0].length ; i++){
-					for(int j ; j < file.header.numOfChannels ; j++){
-						*cast(ushort*)(file.waveData[j].data.ptr + i) = *cast(ushort*)(buffer + bufferOffset);
-						bufferOffset++;
-					}
-				}
-			}
-		}
+		fread(&file.riff, file.riff.sizeof, 1, inputStream);
+		fread(&file.subchunk1, file.subchunk1.sizeof, 1, inputStream);
+		fread(&file.subchunk2, file.subchunk2.sizeof, 1, inputStream);
+
+		uint sampleLength = file.subchunk2.subchunk2Size / file.subchunk1.numOfChannels / 
+							(getWordLength(fromWAVAudioFormat(file.subchunk1.audioFormat, file.subchunk1.bitsPerSample)) / 8);
+		file.data = new WaveData(sampleLength, to!float(file.subchunk1.sampleRate), fromWAVAudioFormat(file.subchunk1.audioFormat, file.subchunk1.bitsPerSample), 
+							file.subchunk2.subchunk2Size, cast(ubyte)file.subchunk1.numOfChannels);
+		fread(file.data.data.ptr, file.subchunk2.subchunk2Size,1 , inputStream);
+		
 		fclose(inputStream);
 		free(buffer);
 		return file;
@@ -188,12 +106,10 @@ public:
 			}
 			throw new AudioFileException("File access error! Error number: " ~ to!string(errorCode));
 		}
-		fwrite(&(file.header), WavHeader.sizeof, 1, outputStream);
-		if(file.startOfData.length){
-			fwrite(file.startOfData.ptr, file.startOfData.length, 1, outputStream);
-		}else if(file.waveData.length == 1){
-			fwrite(file.waveData[0].data.ptr, file.waveData[0].data.length, 1, outputStream);
-		}
+		fwrite(&(file.riff), WavHeaderMain.sizeof, 1, outputStream);
+		fwrite(&(file.subchunk1), WavHeaderSubchunk1.sizeof, 1, outputStream);
+		fwrite(&(file.subchunk2), WavHeaderSubchunk2.sizeof, 1, outputStream);
+		fwrite(file.data.data.ptr, file.data.data.length, 1, outputStream);
 		fclose(outputStream);
 	}
 	/**
@@ -211,10 +127,7 @@ public:
 			throw new AudioFileException("File access error! Error number: " ~ to!string(errorCode));
 		}
 		fwrite(&(file.header), PCMHeader.sizeof, 1, outputStream);
-		if(file.startOfData.length){
-			fwrite(file.startOfData.ptr, file.startOfData.length, 1, outputStream);
-		}else if(file.waveData.length == 1){
-			fwrite(file.waveData[0].data.ptr, file.waveData[0].data.length, 1, outputStream);
-		}
+		fwrite(file.data.data.ptr, file.data.data.length, 1, outputStream);
+		
 		fclose(outputStream);
 	}
