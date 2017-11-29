@@ -50,7 +50,7 @@ Specifies the resampling method.\n
         SUPPORTED FILE FORMATS:
 pcm, wav
         SUPPORTED CODECS:
-8bitsigned, 16bitsigned, 24bitsigned, 32bitsigned, 8bitunsigned, 12bitunsigned, 16bitunsigned, 24bitunsigned, 32bitunsigned, IMA_ADPCM, Dialogic_ADPCM, Compact_ADPCM, XA_ADPCM
+8bitsigned, 16bitsigned, 24bitsigned, 32bitsigned, 8bitunsigned, 12bitunsigned, 16bitunsigned, 24bitunsigned, 32bitunsigned, IMA_ADPCM, Dialogic_ADPCM, XA_ADPCM, MuLaw, ALaw
 		 ");
 }
 
@@ -243,9 +243,15 @@ int main(string[] argv){
 					case CodecType.XA_ADPCM:
 						decodeStreamXAADPCM(cast(ubyte*)waveIn.data.ptr, cast(short*)intermediateWaveData[0].ptr, waveIn.length, waveIn.channels);
 						break;
+					case CodecType.MU_LAW:
+						decodeStreamMuLawPCM(cast(ubyte*)waveIn.data.ptr, cast(short*)intermediateWaveData[0].ptr, waveIn.length);
+						break;
+					case CodecType.A_LAW:
+						decodeStreamALawPCM(cast(ubyte*)waveIn.data.ptr, cast(short*)intermediateWaveData[0].ptr, waveIn.length);
+						break;
 					default:
 						break;
-			}
+				}
 			}else{
 				for(int i ; i < waveIn.channels ; i++){
 					intermediateWaveData[i].length = waveIn.length * (16 / 8);
@@ -269,6 +275,12 @@ int main(string[] argv){
 							break;
 						case CodecType.DIALOGIC_ADPCM:
 							decodeStreamDialogicADPCM(cast(ubyte*)intermediateWaveData0[i].ptr, cast(short*)intermediateWaveData[i].ptr, waveIn.length);
+							break;
+						case CodecType.MU_LAW:
+							decodeStreamMuLawPCM(cast(ubyte*)intermediateWaveData0[i].ptr, cast(short*)intermediateWaveData[i].ptr, waveIn.length);
+							break;
+						case CodecType.A_LAW:
+							decodeStreamALawPCM(cast(ubyte*)intermediateWaveData0[i].ptr, cast(short*)intermediateWaveData[i].ptr, waveIn.length);
 							break;
 						default:
 							break;
@@ -300,6 +312,12 @@ int main(string[] argv){
 						encodeStreamXAADPCM(cast(short*)intermediateWaveData[0].ptr, cast(ubyte*)waveOut.data.ptr, waveOut.length, waveOut.channels);
 						
 						break;
+					case CodecType.MU_LAW:
+						encodeStreamMuLawPCM(cast(short*)intermediateWaveData[0].ptr, cast(ubyte*)waveOut.data.ptr, waveOut.length);
+						break;
+					case CodecType.A_LAW:
+						encodeStreamALawPCM(cast(short*)intermediateWaveData[0].ptr, cast(ubyte*)waveOut.data.ptr, waveOut.length);
+						break;
 					default:
 						break;
 				}
@@ -324,6 +342,12 @@ int main(string[] argv){
 							encodeStreamDialogicADPCM(cast(short*)intermediateWaveData[i].ptr, cast(ubyte*)intermediateWaveData0[i].ptr, waveOut.length);
 							break;
 						default:
+							break;
+						case CodecType.MU_LAW:
+							encodeStreamMuLawPCM(cast(short*)intermediateWaveData[i].ptr, cast(ubyte*)intermediateWaveData0[i].ptr, waveOut.length);
+							break;
+						case CodecType.A_LAW:
+							encodeStreamALawPCM(cast(short*)intermediateWaveData[i].ptr, cast(ubyte*)intermediateWaveData0[i].ptr, waveOut.length);
 							break;
 					}
 				}
@@ -391,6 +415,10 @@ CodecType parseCodecType(string s){
 			return CodecType.Yamaha_ADPCMA;
 		case "XA_ADPCM":
 			return CodecType.XA_ADPCM;
+		case "MuLawPCM":
+			return CodecType.MU_LAW;
+		case "ALawPCM":
+			return CodecType.A_LAW;
 		default:
 			return CodecType.NULL;	
 	}

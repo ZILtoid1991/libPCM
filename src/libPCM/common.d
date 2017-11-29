@@ -29,7 +29,7 @@ public enum CodecType : ushort{
 	XA_ADPCM		=	35,
 	Yamaha_ADPCMA	=	36,
 	MU_LAW			=	64,
-	A_LAW_87_6		=	65,
+	A_LAW			=	65,
 	FLOAT			=	96,
 }
 
