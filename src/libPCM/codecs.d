@@ -192,15 +192,15 @@ public @nogc struct EncoderWorkpad{
  * Dinamically decodes a Mu-Law stream
  */
 public @nogc short dynamicDecodeMuLawPCM(ubyte* inputStream, DecoderWorkpad* workpad){
-	workpad.position++;
-	return MU_Law_DecodeTable[*inputStream];
+	
+	return MU_Law_DecodeTable[inputStream[workpad.position++]];
 }
 /**
  * Dinamically decodes an A-Law stream
  */
 public @nogc short dynamicDecodeALawPCM(ubyte* inputStream, DecoderWorkpad* workpad){
-	workpad.position++;
-	return A_Law_DecodeTable[*inputStream];
+	
+	return A_Law_DecodeTable[inputStream[workpad.position++]];
 }
 /**
  * Dinamically decodes an IMA ADPCM stream.
@@ -211,9 +211,9 @@ public @nogc short dynamicDecodeIMAADPCM(ubyte* inputStream, DecoderWorkpad* wor
 	ubyte index;
 	//get the next index
 	if(workpad.position & 1)
-		index = *(inputStream) & 0x0F;
+		index = inputStream[workpad.position>>1] & 0x0F;
 	else
-		index = (*(inputStream))>>4;
+		index = (inputStream[workpad.position>>1])>>4;
 	//calculate the next step size
 	workpad.stepIndex += ADPCM_IndexTable[index];
 	//clamp the index data within the steptable's range
@@ -243,9 +243,9 @@ public @nogc short dynamicDecodeDialogicADPCM(ubyte* inputStream, DecoderWorkpad
 	ubyte index;
 	//get the next index
 	if(workpad.position & 1)
-		index = *(inputStream) & 0x0F;
+		index = inputStream[workpad.position>>1] & 0x0F;
 	else
-		index = (*(inputStream))>>4;
+		index = (inputStream[workpad.position>>1])>>4;
 	//calculate the next step size
 	workpad.stepIndex += ADPCM_IndexTable[index];
 	//clamp the index data within the steptable's range
@@ -273,7 +273,7 @@ public @nogc DecoderWorkpad initializeDialogicADPCMDecoderWorkpad(){
 	return DecoderWorkpad(0,16,0);
 }
 /**
- * Dynamically decodes a Yamaha ADPCM A stream. Workpad is 16 bytes long, inputStream always points to the first byte.
+ * Dynamically decodes a Yamaha ADPCM A stream. Workpad is 16 bytes long.
  */
 public @nogc short dynamicDecodeYamahaADPCMA(ubyte* inputStream, DecoderWorkpad* workpad){
 	uint stepSize;
@@ -281,9 +281,9 @@ public @nogc short dynamicDecodeYamahaADPCMA(ubyte* inputStream, DecoderWorkpad*
 	ubyte index;
 	//get the next index
 	if(workpad.position & 1)
-		index = *(inputStream) & 0x0F;
+		index = inputStream[workpad.position>>1] & 0x0F;
 	else
-		index = (*(inputStream))>>4;
+		index = (inputStream[workpad.position>>1])>>4;
 	//calculate the next step size
 	workpad.stepIndex += Yamaha_ADPCM_A_IndexTable[index];
 	//clamp the index data within the steptable's range
@@ -305,15 +305,42 @@ public @nogc short dynamicDecodeYamahaADPCMA(ubyte* inputStream, DecoderWorkpad*
 	return cast(short)d_n;
 }
 /**
- * Appends 8 bit unsigned PCM to 16 bit signed PCM. Workpad is 16 bytes long, inputStream always points to the first byte.
+ * Appends 8 bit unsigned PCM to 16 bit signed PCM. Workpad is 16 bytes long.
  */
 public @nogc short dynamicDecode8BitPCMUnsigned(ubyte* inputStream, DecoderWorkpad* workpad){
-	int output = *(inputStream + workpad.position);
-	output += byte.min;
-	output *= 256;
+	int output = inputStream[workpad.position];
+	output = output | output<<8;
+	output += short.min;
 
 	workpad.position++;
 	return cast(short)(output);
+}
+public @nogc short dynamicDecode12BitPCMUnsigned(ubyte* inputStream, DecoderWorkpad* workpad){
+	int output;
+	if(workpad.position & 1){
+		output = (inputStream[workpad.position])<<8;
+		output |= (inputStream[workpad.position + 1])&0xF0;
+	}else{
+		output = (inputStream[workpad.position])&0x0F;
+		output |= inputStream[workpad.position + 1];
+		output<<=4;
+	}
+	output += short.min;
+	workpad.position++;
+	return cast(short)(output);
+}
+public @nogc short dynamicDecode12BitPCMSigned(ubyte* inputStream, DecoderWorkpad* workpad){
+	int output;
+	if(workpad.position & 1){
+		output = (inputStream[workpad.position])<<8;
+		output |= (inputStream[workpad.position + 1])&0xF0;
+	}else{
+		output = (inputStream[workpad.position])&0x0F;
+		output |= inputStream[workpad.position + 1];
+		output<<=4;
+	}
+	workpad.position++;
+	return cast(short)(signExtend(output, 12));
 }
 /**
  * Workpad for XA ADPCM decoders
@@ -363,7 +390,7 @@ public @nogc void blockDecodeXAADPCM(ubyte* inputStream, short* outputStream, in
  * Dinamically encodes a stream with Mu-Law PCM.
  */
 public @nogc void dynamicEncodeMuLawPCM(short* inputStream, ubyte* outputStream, EncoderWorkpad* workpad){
-	int sample = *inputStream;
+	int sample = inputStream[workpad.position];
 	ubyte sign = sample < 0 ? 0b1000_0000 : 0;
 	if(!sign)
 		sample *= -1;
@@ -377,7 +404,7 @@ public @nogc void dynamicEncodeMuLawPCM(short* inputStream, ubyte* outputStream,
  * Dinamically encodes a stream with A-Law PCM.
  */
 public @nogc void dynamicEncodeALawPCM(short* inputStream, ubyte* outputStream, EncoderWorkpad* workpad){
-	int sample = *inputStream;
+	int sample = inputStream[workpad.position];
 	ubyte sign = (~sample >> 8) & 0b1000_0000;
 	ubyte output;
 	if(!sign)
@@ -401,7 +428,7 @@ public @nogc void dynamicEncodeIMAADPCM(short* inputStream, ubyte* outputStream,
 	//uint stepSize = *cast(uint*)(workpad + 12);
 	ubyte index;
 
-	int d_n = *(inputStream) - workpad.d_nMinusOne; //applying negative feedback to x_n
+	int d_n = inputStream[workpad.position] - workpad.d_nMinusOne; //applying negative feedback to x_n
 	if(d_n < 0){ 
 		d_n *=-1; //get the absolute value of d_n
 		index = 0b1000;	//set the sign if d_n is negative
@@ -451,7 +478,7 @@ public @nogc void dynamicEncodeDialogicADPCM(short* inputStream, ubyte* outputSt
 	//uint stepSize = *cast(uint*)(workpad + 12);
 	ubyte index;
 
-	int d_n = *(inputStream) - workpad.d_nMinusOne; //applying negative feedback to x_n
+	int d_n = inputStream[workpad.position] - workpad.d_nMinusOne; //applying negative feedback to x_n
 	d_n /= 16;
 	if(d_n < 0){ 
 		d_n *=-1; //get the absolute value of d_n
@@ -510,7 +537,7 @@ public @nogc void dynamicEncodeYamahaADPCMA(short* inputStream, ubyte* outputStr
 	//uint stepSize = *cast(uint*)(workpad + 12);
 	ubyte index;
 
-	int d_n = *(inputStream) - workpad.d_nMinusOne; //applying negative feedback to x_n
+	int d_n = inputStream[workpad.position] - workpad.d_nMinusOne; //applying negative feedback to x_n
 	d_n /= 16;
 	if(d_n < 0){ 
 		d_n *=-1; //get the absolute value of d_n
@@ -666,7 +693,7 @@ public @nogc void dynamicEncode8BitPCMUnsigned(short* inputStream, ubyte* output
 public @nogc void decodeStreamMuLawPCM(ubyte* inputStream, short* outputStream, uint length){
 	DecoderWorkpad workpad = DecoderWorkpad();
 	for(uint i ; i < length ; i++){
-		*(outputStream + i) = dynamicDecodeMuLawPCM(inputStream + i, &workpad);	
+		*(outputStream + i) = dynamicDecodeMuLawPCM(inputStream, &workpad);	
 	}
 }
 /**
@@ -675,7 +702,7 @@ public @nogc void decodeStreamMuLawPCM(ubyte* inputStream, short* outputStream, 
 public @nogc void decodeStreamALawPCM(ubyte* inputStream, short* outputStream, uint length){
 	DecoderWorkpad workpad = DecoderWorkpad();
 	for(uint i ; i < length ; i++){
-		*(outputStream + i) = dynamicDecodeALawPCM(inputStream + i, &workpad);	
+		*(outputStream + i) = dynamicDecodeALawPCM(inputStream, &workpad);	
 	}
 }
 /**
@@ -684,7 +711,7 @@ public @nogc void decodeStreamALawPCM(ubyte* inputStream, short* outputStream, u
 public @nogc void decodeStreamIMAADPCM(ubyte* inputStream, short* outputStream, uint length){
 	DecoderWorkpad workpad = DecoderWorkpad();
 	for(uint i ; i < length ; i++){
-		*(outputStream + i) = dynamicDecodeIMAADPCM(inputStream + (i>>1), &workpad);	
+		*(outputStream + i) = dynamicDecodeIMAADPCM(inputStream, &workpad);	
 	}
 }
 /**
@@ -693,7 +720,7 @@ public @nogc void decodeStreamIMAADPCM(ubyte* inputStream, short* outputStream, 
 public @nogc void decodeStreamDialogicADPCM(ubyte* inputStream, short* outputStream, uint length){
 	DecoderWorkpad workpad = initializeDialogicADPCMDecoderWorkpad();
 	for(uint i ; i < length ; i++){
-		*(outputStream + i) = dynamicDecodeDialogicADPCM(inputStream + (i>>1), &workpad);
+		*(outputStream + i) = dynamicDecodeDialogicADPCM(inputStream, &workpad);
 	}
 }
 /**
@@ -702,7 +729,7 @@ public @nogc void decodeStreamDialogicADPCM(ubyte* inputStream, short* outputStr
 public @nogc void decodeStreamYamahaADPCMA(ubyte* inputStream, short* outputStream, uint length){
 	DecoderWorkpad workpad = initializeDialogicADPCMDecoderWorkpad;
 	for(uint i ; i < length ; i++){
-		*(outputStream + i) = dynamicDecodeYamahaADPCMA(inputStream + (i>>1), &workpad);
+		*(outputStream + i) = dynamicDecodeYamahaADPCMA(inputStream, &workpad);
 		}
 }
 /**
@@ -711,7 +738,7 @@ public @nogc void decodeStreamYamahaADPCMA(ubyte* inputStream, short* outputStre
 public @nogc void decodeStream8BitPCMUnsigned(ubyte* inputStream, short* outputStream, uint length){
 	DecoderWorkpad workpad = DecoderWorkpad();
 	for(uint i ; i < length ; i++){
-		*(outputStream + i) = dynamicDecode8BitPCMUnsigned(inputStream + i, &workpad);
+		*(outputStream + i) = dynamicDecode8BitPCMUnsigned(inputStream, &workpad);
 		}
 }
 /**
@@ -744,8 +771,8 @@ public @nogc void encodeStreamDialogicADPCM(short* inputStream, ubyte* outputStr
 	EncoderWorkpad workpad = initializeDialogicADPCMEncoderWorkpad();
 	for(uint i ; i < length ; i++){
 		dynamicEncodeDialogicADPCM(inputStream, outputStream, &workpad);
-		inputStream++;
-		outputStream += i&1;
+		//inputStream++;
+		//outputStream += i&1;
 		}
 	
 }
@@ -756,8 +783,8 @@ public @nogc void encodeStreamYamahaADPCMA(short* inputStream, ubyte* outputStre
 	EncoderWorkpad workpad = initializeDialogicADPCMEncoderWorkpad();
 	for(uint i ; i < length ; i++){
 		dynamicEncodeYamahaADPCMA(inputStream, outputStream, &workpad);
-		inputStream++;
-		outputStream += i&1;
+		//inputStream++;
+		//outputStream += i&1;
 		}
 	
 }
@@ -768,8 +795,8 @@ public @nogc void encodeStream8BitPCMUnsigned(short* inputStream, ubyte* outputS
 	EncoderWorkpad workpad = EncoderWorkpad();
 	for(uint i ; i < length ; i++){
 		dynamicEncode8BitPCMUnsigned(inputStream, outputStream, &workpad);
-		inputStream++;
-		outputStream++;
+		//inputStream++;
+		//outputStream++;
 		}
 }
 /**
@@ -779,8 +806,8 @@ public @nogc void encodeStreamMuLawPCM(short* inputStream, ubyte* outputStream, 
 	EncoderWorkpad workpad = EncoderWorkpad();
 	for(uint i ; i < length ; i++){
 		dynamicEncodeMuLawPCM(inputStream, outputStream, &workpad);
-		inputStream++;
-		outputStream++;
+		//inputStream++;
+		//outputStream++;
 		}
 }
 /**
@@ -790,8 +817,8 @@ public @nogc void encodeStreamALawPCM(short* inputStream, ubyte* outputStream, u
 	EncoderWorkpad workpad = EncoderWorkpad();
 	for(uint i ; i < length ; i++){
 		dynamicEncodeALawPCM(inputStream, outputStream, &workpad);
-		inputStream++;
-		outputStream++;
+		//inputStream++;
+		//outputStream++;
 		}
 }
 /**
