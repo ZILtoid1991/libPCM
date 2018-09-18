@@ -9,22 +9,29 @@ import std.stdio;
 
 import core.stdc.math;
 import libPCM.utility;
-
+///For IMA and Dialogic ADPCM
 package static immutable byte[16] ADPCM_IndexTable = 
 			[-1, -1, -1, -1, 2, 4, 6, 8, 
-			 -1, -1, -1, -1, 2, 4, 6, 8];	///For IMA and Dialogic ADPCM
+			 -1, -1, -1, -1, 2, 4, 6, 8];	
+///For the Yamaha ADPCM A found in YM2610 and probably other chips
 package static immutable byte[16] Yamaha_ADPCM_A_IndexTable =
 			[-1, -1, -1, -1, 2, 5, 7, 9, 
-			 -1, -1, -1, -1, 2, 5, 7, 9];	///For the Yamaha ADPCM A found in YM2610 and probably other chips
+			 -1, -1, -1, -1, 2, 5, 7, 9];	
+///Used rarely, couldn't find more info about this codec
 package static immutable byte[16] Yamaha_ADPCM_DiffLookup =
 			[1,  3,  5,  7,  9,  11,  13,  15,
 			-1, -3, -5, -7, -9, -11, -13, -15];
+///Very rare, mostly experimental
+///Very low quality
 package static immutable byte[4] ADPCM_IndexTable_2Bit = 
 			[-1, 2,
 			 -1, 2];
+///Very rare, mostly experimental
 package static immutable byte[8] ADPCM_IndexTable_3Bit = 
 			[-1, -1, 2, 4,
 			 -1, -1, 2, 4,];
+///Very rare, mostly experimental
+///Supposedly has better quality sound than 4bit implementations.
 package static immutable byte[32] ADPCM_IndexTable_5Bit = 
 			[-1, -1, -1, -1, -1, -1, -1, -1, 1, 2, 4, 6, 8, 10, 13, 16
 			 -1, -1, -1, -1, -1, -1, -1, -1, 1, 2, 4, 6, 8, 10, 13, 16];
@@ -34,11 +41,15 @@ package static immutable byte[2][5] XA_ADPCM_Table =
 			[115,-52],
 			[98,-55],
 			[112,-60]];
+///Most OKI and Yamaha chips seems to use this step-table
 package static immutable ushort[49] DIALOGIC_ADPCM_StepTable = 
 			[16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55,
 			60, 66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190,	
 			209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598,
-			658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552];		///Most OKI and Yamaha chips seems to use this step-table
+			658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552];		
+/** 
+ * Most common ADPCM steptable
+ */
 package static immutable ushort[89] IMA_ADPCM_StepTable = 
 			[7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 
 			19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 
@@ -152,8 +163,155 @@ package static immutable short[256] A_Law_DecodeTable =
 			1888,  1824,  2016,  1952,  1632,  1568,  1760,  1696,
 			688,   656,   752,   720,   560,   528,   624,   592,
 			944,   912,  1008,   976,   816,   784,   880,   848];
-
-/*
+/**
+ * For easy access of 5bit ADPCM nibbles
+ */
+align(1) struct ADPCMDataPacket5Bit{
+	ubyte word1, word2, word3, word4, word5;	///Sequential words
+	/**
+	 * Ampersand it with 8 to avoid issues.
+	 */
+	@nogc ubyte opIndex(size_t index){
+		final switch(index){
+			case 0:
+				return word1>>3;
+			case 1:
+				return (word1 & 0b0000_0111)<<2 | word2>>6;
+			case 2:
+				return (word2 & 0b0011_1110)>>1;
+			case 3:
+				return (word2 & 0b0000_0001)<<5 | word3>>4;
+			case 4:
+				return (word3 & 0b0000_1111)<<1 | word4>>7;
+			case 5:
+				return (word4 & 0b0111_1100)>>2;
+			case 6:
+				return (word4 & 0b0000_0011)<<3 | word5>>5;
+			case 7:
+				return word5 & 0b0001_1111;
+		}
+	}
+	@nogc ubyte opIndexAssign(size_t index, ubyte val){
+		final switch(index){
+			case 0:
+				word1 &= 0b0000_0111;
+				word1 |= val<<3;
+				return val;
+			case 1:
+				word1 &= 0b1111_1000;
+				word1 |= val>>2;
+				word2 &= 0b0011_1111;
+				word2 |= val<<6;
+				return val;
+			case 2:
+				word2 &= 0b1100_0001;
+				word2 |= val<<1;
+				return val;
+			case 3:
+				word2 &= 0b1111_1110;
+				word2 |= val>>4;
+				word3 &= 0b0000_1111;
+				word3 |= val<<4;
+				return val;
+			case 4:
+				word3 &= 0b1111_0000;
+				word3 |= val>>1;
+				word4 &= 0b0111_1111;
+				word4 |= val<<4;
+				return val;
+			case 5:
+				word4 &= 0b1000_0011;
+				word4 |= val<<2;
+				return val;
+			case 6:
+				word4 &= 0b1111_1100;
+				word4 |= val>>3;
+				word5 &= 0b0001_1111;
+				word5 |= val<<5;
+				return val;
+			case 7:
+				word5 &= 0b1110_0000;
+				word5 |= val;
+				return val;
+			
+		}
+	}
+}
+/**
+ * For easy access of 3bit ADPCM nibbles
+ */
+align(1) struct ADPCMDataPacket3Bit{
+	ubyte word1, word2, word3;	///Sequential words
+	/**
+	 * Ampersand it with 8 to avoid issues.
+	 */
+	@nogc ubyte opIndex(size_t index){
+		final switch(index){
+			case 0:
+				return word1>>5;
+			case 1:
+				return (word1 & 0b0001_1100)>>2;
+			case 2:
+				return (word1 & 0b0000_0011)<<1 | word2>>7;
+			case 3:
+				return (word2 & 0b0111_0000)>>4;
+			case 4:
+				return (word2 & 0b0000_1110)>>1;
+			case 5:
+				return (word2 & 0b0000_0001)<<2 | word3>>6;
+			case 6:
+				return (word3 & 0b0011_1000)>>3;
+			case 7:
+				return word3 & 0b0000_0111;
+		}
+	}
+	@nogc ubyte opIndexAssign(size_t index, ubyte val){
+		final switch(index){
+			case 0:
+				word1 &= 0b0001_1111;
+				word1 |= val<<5;
+				return val;
+			case 1:
+				word1 &= 0b1110_0011;
+				word1 |= val<<2;
+				return val;
+			case 2:
+				word2 &= 0b1111_1100;
+				word2 |= val>>1;
+				word2 &= 0b0111_1111;
+				word2 |= val<<7;
+				return val;
+			case 3:
+				word2 &= 0b1000_1111;
+				word2 |= val<<4;
+				return val;
+			case 4:
+				word2 &= 0b1111_0001;
+				word2 |= val<<1;
+				return val;
+			case 5:
+				word2 &= 0b1111_1110;
+				word2 |= val>>2;
+				word3 &= 0b0011_1111;
+				word3 |= val<<6;
+				return val;
+			case 6:
+				word3 &= 0b1100_0111;
+				word3 |= val<<3;
+				return val;
+			case 7:
+				word3 &= 0b1111_1000;
+				word3 |= val;
+				return val;
+			
+		}
+	}
+}
+/**
+ * Alias for function pointer for codec interchangeability
+ */
+alias CommonDecoderFuncPtr = short function(ubyte* inputStream, DecoderWorkpad* workpad);
+/**
  * A note on workpads:
  * Dynamic decode functions use 16 bytes of workpad, consisting of 4 32 bit integers, which is the recommended initialization method to avoid misaligned
  * integers. For looping an audio sample, you need to back up the workpad at the start of the loop, monitor the third integer (which is the position), then
@@ -164,10 +322,10 @@ package static immutable short[256] A_Law_DecodeTable =
  * None of the functions depend on external libraries or functions, and require no garbage collection.
  */
 public @nogc struct DecoderWorkpad{
-	uint position;
-	int stepIndex;
-	int x_nMinusOne;
-	int predictor;
+	uint position;	///Data offset in samples
+	int stepIndex;	///ADPCM: current position on the steptable of the codec
+	int x_nMinusOne;///Previous outputted sample
+	int predictor;	///unused
 	public @nogc this(uint position, int stepIndex, int x_nMinusOne){
 		this.position = position;
 		this.stepIndex = stepIndex;
@@ -175,10 +333,10 @@ public @nogc struct DecoderWorkpad{
 	}
 }
 public @nogc struct EncoderWorkpad{
-	uint position;
-	uint stepSize;
-	int stepIndex;
-	int d_nMinusOne;
+	uint position;	///Data offset in samples
+	uint stepSize;	///ADPCM: Size of the next step
+	int stepIndex;	///ADPCM: current position on the steptable of the codec
+	int d_nMinusOne;///Previous sample for error compensation
 	DecoderWorkpad dW;
 	public @nogc this(uint position, uint stepSize, int stepIndex, int d_nMinusOne, DecoderWorkpad dW){
 		this.position = position;
